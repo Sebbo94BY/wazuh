@@ -7820,6 +7820,49 @@ void test_wdb_global_set_agent_groups_override_set_sync_error(void **state) {
     __real_cJSON_Delete(j_groups_number);
 }
 
+void test_wdb_global_set_agent_groups_override_set_sync_error(void **state) {
+    test_struct_t *data  = (test_struct_t *)*state;
+    int agent_id = 1;
+    int group_id = 1;
+    char group_name[] = "GROUP";
+    char sync_status[] = "synced";
+    wdb_groups_set_mode_t mode = WDB_GROUP_OVERRIDE;
+    cJSON* j_group_array = __real_cJSON_CreateArray();
+    cJSON_AddItemToArray(j_group_array, cJSON_CreateString(group_name));
+    cJSON* j_find_group_resp = cJSON_Parse("[{\"id\":1}]");
+    cJSON* j_agents_group_info = __real_cJSON_CreateArray();
+    cJSON* j_groups_number = cJSON_Parse("[{\"groups_number\":0}]");
+
+    for (int i=0; i<AGENTS_SIZE; i++) {
+        cJSON* j_agent_group = cJSON_CreateObject();
+        cJSON_AddItemToObject(j_agent_group, "id", cJSON_CreateNumber(agent_id));
+        cJSON_AddItemToObject(j_agent_group, "groups", cJSON_Duplicate(j_group_array, TRUE));
+        cJSON_AddItemToArray(j_agents_group_info, j_agent_group);
+
+        /* wdb_global_delete_agent_belong */
+        create_wdb_global_delete_agent_belong_success_call(agent_id);
+
+        /* wdb_global_validate_groups_success_call */
+        create_wdb_global_validate_groups_success_call(agent_id, j_groups_number);
+
+        /* wdb_global_assign_agent_group */
+        create_wdb_global_assign_agent_group_success_call(agent_id, group_id, group_name, j_find_group_resp);
+
+        /* wdb_global_set_agent_groups_sync_status */
+        expect_value(__wrap_wdb_init_stmt_in_cache, statement_index, WDB_STMT_GLOBAL_GROUP_SYNC_SET);
+        will_return(__wrap_wdb_init_stmt_in_cache, NULL);
+        expect_string(__wrap__merror, formatted_msg, "Cannot set group_sync_status for agent '001'");
+    }
+
+    wdbc_result result = wdb_global_set_agent_groups(data->wdb, mode, sync_status, j_agents_group_info);
+
+    assert_int_equal(result, WDBC_ERROR);
+    __real_cJSON_Delete(j_agents_group_info);
+    __real_cJSON_Delete(j_find_group_resp);
+    __real_cJSON_Delete(j_group_array);
+    __real_cJSON_Delete(j_groups_number);
+}
+
 void test_wdb_global_set_agent_groups_override_delete_error(void **state) {
     test_struct_t *data  = (test_struct_t *)*state;
     int agent_id = 1;
