@@ -304,7 +304,7 @@ def test_agent_get_agents(socket_mock, send_mock, agent_list, expected_items):
 
 
 @pytest.mark.parametrize('group, group_exists, expected_agents', [
-    ('default', True, ['001', '002', '005']),
+    ('group-1', True, ['006', '008']),
     ('not_exists_group', False, None)
 ])
 @patch('wazuh.agent.get_agents')
@@ -324,12 +324,12 @@ def test_agent_get_agents_in_group(socket_mock, send_mock, mock_get_groups, mock
     expected_agents : List of str
         List of agent ID's that belongs to a given group.
     """
-    mock_get_groups.return_value = ['default']
+    mock_get_groups.return_value = ['group-1']
     if group_exists:
         # Since the decorator is mocked, pass `group_list` using `call_args` from mock
         get_agents_in_group(group_list=[group], select=['id'])
         kwargs = mock_get_agents.call_args[1]
-        agents = get_agents(agent_list=short_agent_list, **kwargs)
+        agents = get_agents(agent_list=full_agent_list, **kwargs)
         assert agents.affected_items
         assert len(agents.affected_items) == len(expected_agents)
         for expected_agent, affected_agent in zip(expected_agents, agents.affected_items):
@@ -366,12 +366,11 @@ def test_agent_get_agents_keys(socket_mock, send_mock, agent_list, expected_item
             assert (failed_item.message == 'Agent does not exist' for failed_item in agent_keys.failed_items.keys())
 
 
-# TODO: test group filtering in other unit test
 @pytest.mark.parametrize('agent_list, filters, q, error_code, expected_items', [
     (full_agent_list[1:], {'status': 'all', 'older_than': '1s'}, None, None, full_agent_list[1:]),
-    (full_agent_list[1:], {'status': 'all', 'older_than': '1s'}, None, 1731, full_agent_list[1:]),
-    (full_agent_list[1:], {'status': 'all', 'older_than': '1s'}, None, 1731, full_agent_list[1:]),
-    (full_agent_list[1:], {'status': 'all', 'older_than': '1s'}, None, 1731, full_agent_list[1:]),
+    (full_agent_list[1:], {'status': 'all', 'older_than': '1s', 'group': 'group-0'}, None, 1731, []),
+    (full_agent_list[1:], {'status': 'all', 'older_than': '1s', 'group': 'group-1'}, None, 1731, ['006', '008']),
+    (full_agent_list[1:], {'status': 'all', 'older_than': '1s', 'group': 'group-2'}, None, 1731, ['007', '008']),
     (full_agent_list[1:], {'status': 'all', 'older_than': '1s', 'registerIP': 'any'}, None, 1731,
      ['001', '003', '004', '006', '007', '008', '009']),
     (full_agent_list[1:], {'status': 'all', 'older_than': '1s', 'ip': '172.17.0.202'}, None, 1731, ['001']),
@@ -414,8 +413,6 @@ def test_agent_delete_agents(socket_mock, send_mock, mock_remove, agent_list, fi
     """
     if not isinstance(error_code, WazuhException):
         result = delete_agents(agent_list, filters=filters, q=q)
-        print("result", result.affected_items)
-
         assert result.affected_items == sorted(expected_items), \
             f'"Affected_items" does not match. Should be "{result.affected_items}".'
         if result.failed_items:
@@ -1048,13 +1045,13 @@ def test_agent_get_outdated_agents(socket_mock, send_mock, agent_list, outdated_
             {'os.version': 'unknown_version'},
             False
     ),
-    (
-            {'006'},
-            {},
+     (
+            {'001', '006'},
+            {'1731': {'001'}},
             {'error': 0,
              'data': [{'error': 0, 'message': 'Success', 'agent': 6, 'task_id': 1}],
              'message': 'Success'},
-            None,
+            {'group': 'group-1'},
             False
     ),
     (
@@ -1171,15 +1168,15 @@ def test_agent_upgrade_agents(mock_socket, mock_wdb, mock_client_keys, agent_set
             False
     ),
     (
-            {'006'},
-            {},
+            {'001', '006'},
+            {'1731': {'001'}},
             {'error': 0,
              'data': [{'error': 0, 'message': 'Success', 'agent': 6, 'task_id': 1,
                        'module': 'upgrade_module', 'command': 'upgrade',
                        'status': 'upgraded', 'create_time': '2020/09/23 10:39:53',
                        'update_time': '2020/09/23 10:54:53'}, ],
              'message': 'Success'},
-            None,
+            {'group': 'group-1'},
             False
     ),
     (

@@ -345,8 +345,8 @@ def get_agents(agent_list: list = None, offset: int = 0, limit: int = common.DAT
         rbac_filters = get_rbac_filters(system_resources=system_agents, permitted_resources=agent_list, filters=filters)
 
         with WazuhDBQueryAgents(offset=offset, limit=limit, sort=sort, search=search, select=select,
-                                query=q, **rbac_filters, distinct=distinct) as db_query:
-            data = db_query.run()
+                                query=q, **rbac_filters, distinct=distinct) as groups_db_query:
+            data = groups_db_query.run()
 
         result.affected_items.extend(data['items'])
         result.total_affected_items = data['totalItems']
@@ -396,7 +396,6 @@ def get_agents_in_group(group_list: list, offset: int = 0, limit: int = common.D
     if group_list[0] not in system_groups:
         raise WazuhResourceNotFound(1710)
 
-    # TODO: query the belongs table to look for the relationship agent-group and then do the query to the agent table
     q = 'group=' + group_list[0] + (';' + q if q else '')
 
     return get_agents(offset=offset, limit=limit, sort=sort, search=search, select=select, filters=filters, q=q,

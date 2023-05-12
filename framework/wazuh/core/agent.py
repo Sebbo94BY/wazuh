@@ -83,14 +83,39 @@ class WazuhDBQueryAgents(WazuhDBQuery):
         unify_wazuh_version_format(filters)
         if min_select_fields is None:
             min_select_fields = {'id'}
+
+        joins = {
+            'belongs': {
+                'type': 'left', 
+                'conditions': ['id=belongs.id_agent']
+            },
+        }
+        group_by=['id']
+
         backend = WazuhDBBackend(query_format='global')
         WazuhDBQuery.__init__(self, offset=offset, limit=limit, table='agent', sort=sort, search=search, select=select,
                               filters=filters, fields=Agent.fields, default_sort_field=default_sort_field,
                               default_sort_order='ASC', query=query, backend=backend,
                               min_select_fields=min_select_fields, count=count, get_data=get_data,
                               date_fields={'lastKeepAlive', 'dateAdd'}, extra_fields={'internal_key'},
-                              distinct=distinct, rbac_negate=rbac_negate)
+                              distinct=distinct, rbac_negate=rbac_negate, joins=joins, group_by=group_by)
         self.remove_extra_fields = remove_extra_fields
+
+    def _set_group_field_select_value(self):
+        group_field = 'group'
+        if group_field in self.fields:
+            self.fields[group_field] = 'GROUP_CONCAT(belongs.name_group)'
+
+    def _get_total_items(self):
+        self._set_group_field_select_value()
+        super()._get_total_items()
+
+    def _execute_data_query(self):
+        self._set_group_field_select_value()
+        super()._execute_data_query()
+
+    def _default_count_query(self):
+        return "SELECT COUNT(*) FROM ({0} GROUP BY id)"
 
     def _filter_date(self, date_filter: dict, filter_db_name: str):
         """Add date filter to the Wazuh query."""
@@ -204,6 +229,31 @@ class WazuhDBQueryAgents(WazuhDBQuery):
         if self.query_filters:
             # if only traditional filters have been defined, remove last AND from the query.
             self.query_filters[-1]['separator'] = '' if not self.q else 'AND'
+    
+    def _process_filter(self, field_name: str, field_filter: str, q_filter: dict):
+        """Process filters for specific fields.
+        Raises
+        ------
+        WazuhError(1409)
+            If the operator of the filter is not valid.
+        """
+        if field_name == 'group' and q_filter['value'] is not None:
+            valid_group_operators = {'=', '!=', '~'}
+
+            if q_filter['operator'] == '=':
+                self.query += f"(',' || {self.fields[field_name]} || ',') LIKE :{field_filter}"
+                self.request[field_filter] = f"%,{q_filter['value']},%"
+            elif q_filter['operator'] == '!=':
+                self.query += f"NOT (',' || {self.fields[field_name]} || ',') LIKE :{field_filter}"
+                self.request[field_filter] = f"%,{q_filter['value']},%"
+            elif q_filter['operator'] == 'LIKE':
+                self.query += f"{self.fields[field_name]} LIKE :{field_filter}"
+                self.request[field_filter] = f"%{q_filter['value']}%"
+            else:
+                raise WazuhError(1409, f"Valid operators for 'group' field: {', '.join(valid_group_operators)}. "
+                                       f"Used operator: {q_filter['operator']}")
+        else:
+            WazuhDBQuery._process_filter(self, field_name, field_filter, q_filter)
 
 
 class WazuhDBQueryGroup(WazuhDBQuery):
@@ -340,31 +390,6 @@ class WazuhDBQueryGroup(WazuhDBQuery):
             # if only traditional filters have been defined, remove last AND from the query.
             self.query_filters[-1]['separator'] = '' if not self.q else 'AND'
 
-    # TODO: use this function where it's appropiate
-    def _process_group_filter(self, field_filter: str, q_filter: dict):
-        """Process filters for specific fields.
-
-        Raises
-        ------
-        WazuhError(1409)
-            If the operator of the filter is not valid.
-        """
-        field_name = 'name'
-        valid_group_operators = {'=', '!=', '~'}
-
-        if q_filter['operator'] == '=':
-            self.query += f"(',' || {self.fields[field_name]} || ',') LIKE :{field_filter}"
-            self.request[field_filter] = f"%,{q_filter['value']},%"
-        elif q_filter['operator'] == '!=':
-            self.query += f"NOT (',' || {self.fields[field_name]} || ',') LIKE :{field_filter}"
-            self.request[field_filter] = f"%,{q_filter['value']},%"
-        elif q_filter['operator'] == 'LIKE':
-            self.query += f"{self.fields[field_name]} LIKE :{field_filter}"
-            self.request[field_filter] = f"%{q_filter['value']}%"
-        else:
-            raise WazuhError(1409, f"Valid operators for 'group' field: {', '.join(valid_group_operators)}. "
-                                   f"Used operator: {q_filter['operator']}")
-
 
 class WazuhDBQueryDistinctAgents(WazuhDBQueryDistinct, WazuhDBQueryAgents):
     pass
@@ -462,13 +487,12 @@ class WazuhDBQueryMultigroups(WazuhDBQueryAgents):
         self.total_items = self.backend.execute(self.query.format(self._default_count_query()), self.request, True)
         self.query += ' GROUP BY a.id '
 
-
 class Agent:
     """Wazuh Agent object."""
     fields = {'id': 'id', 'name': 'name', 'ip': 'coalesce(ip,register_ip)', 'status': 'connection_status',
               'os.name': 'os_name', 'os.version': 'os_version', 'os.platform': 'os_platform',
               'version': 'version', 'manager': 'manager_host', 'dateAdd': 'date_add',
-              'mergedSum': 'merged_sum', 'configSum': 'config_sum',
+              'group': 'belongs.name_group', 'mergedSum': 'merged_sum', 'configSum': 'config_sum',
               'os.codename': 'os_codename', 'os.major': 'os_major', 'os.minor': 'os_minor',
               'os.uname': 'os_uname', 'os.arch': 'os_arch', 'os.build': 'os_build',
               'node_name': 'node_name', 'lastKeepAlive': 'last_keepalive', 'internal_key': 'internal_key',
@@ -510,6 +534,7 @@ class Agent:
         self.key = None
         self.configSum = None
         self.mergedSum = None
+        self.group = None
         self.manager = None
         self.node_name = None
         self.registerIP = ip
@@ -528,7 +553,7 @@ class Agent:
         dictionary = {'id': self.id, 'name': self.name, 'ip': self.ip, 'internal_key': self.internal_key, 'os': self.os,
                       'version': self.version, 'dateAdd': self.dateAdd, 'lastKeepAlive': self.lastKeepAlive,
                       'status': self.status, 'key': self.key, 'configSum': self.configSum, 'mergedSum': self.mergedSum,
-                      'manager': self.manager, 'node_name': self.node_name,
+                      'group': self.group, 'manager': self.manager, 'node_name': self.node_name,
                       'disconnection_time': self.disconnection_time, 'group_config_status': self.group_config_status}
 
         return dictionary
@@ -1065,17 +1090,15 @@ class Agent:
         else:
             mode = 'append' if not override else 'override'
 
-        # TODO: create insert-group query
-        group_command = f'global insert-group {{"mode":"{mode}","sync_status":"syncreq","data":[{{"name":' \
-            f'{group_name}}}]}}'
-        # TODO: create set-agent-group-belong
-        belongs_command = f'global set-agent-group-belong {{"mode":"{mode}","sync_status":"syncreq","data":[{{' \
-            f'"id_agent":{agent_id},"name_group":{group_name}}}]}}'
+        command = 'global set-agent-groups {' \
+                f'"mode":"{mode}","sync_status":"syncreq","data":' \
+                '[{' \
+                f'"id":{agent_id},"groups":["{group_name}"]' \
+                '}]}'
 
         wdb = WazuhDBConnection()
         try:
-            wdb.send(group_command, raw=True)
-            wdb.send(belongs_command, raw=True)
+            wdb.send(command, raw=True)
         finally:
             wdb.close()
 
@@ -1242,6 +1265,8 @@ def format_fields(field_name: str, value: str) -> str:
     """
     if field_name == 'id':
         return str(value).zfill(3)
+    elif field_name == 'group':
+        return value.split(',')
     elif field_name in ['dateAdd', 'lastKeepAlive', 'disconnection_time']:
         return get_date_from_timestamp(value) if not isinstance(value, str) else value
     else:

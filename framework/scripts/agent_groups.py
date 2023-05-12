@@ -51,7 +51,7 @@ async def show_groups():
     """Show all the groups and the number of agents that belong to each one."""
     groups = await cluster_utils.forward_function(func=agent.get_agent_groups, f_kwargs={})
     unassigned_agents = await cluster_utils.forward_function(func=agent.get_agents,
-                                                             f_kwargs={'q': 'id!=000;group=null'})
+                                                             f_kwargs={'q': 'id!=000'})
 
     check_if_exception(groups)
     check_if_exception(unassigned_agents)
@@ -203,12 +203,7 @@ async def remove_group(group_name: str, quiet: bool = False):
         if result.total_affected_items == 0:
             msg = list(result.failed_items.keys())[0]
         else:
-            affected_agents = next(iter(result.affected_items[0].values()))
             msg = f'Group {group_name} removed.'
-            if len(affected_agents) == 0:
-                msg += "\nNo affected agents."
-            else:
-                msg += "\nAffected agents: {0}.".format(', '.join(affected_agents))
     else:
         msg = 'Cancelled.'
 
