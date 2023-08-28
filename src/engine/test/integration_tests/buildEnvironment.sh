@@ -20,6 +20,19 @@ mkdir $ENVIRONMENT_DIR/logs
 touch $ENVIRONMENT_DIR/logs/engine-flood.log
 
 
+mkdir -p $ENGINE_SRC_DIR/ruleset/wazuh-core-test/decoders
+touch $ENGINE_SRC_DIR/ruleset/wazuh-core-test/decoders/core-wazuh-message.yml
+echo "name: decoder/core-wazuh-message/0" >> $ENGINE_SRC_DIR/ruleset/wazuh-core-test/decoders/core-wazuh-message.yml
+mkdir -p $ENGINE_SRC_DIR/ruleset/wazuh-core-test/filters
+touch $ENGINE_SRC_DIR/ruleset/wazuh-core-test/filters/allow-all.yml
+echo "name: filter/allow-all/0" >> $ENGINE_SRC_DIR/ruleset/wazuh-core-test/filters/allow-all.yml
+touch $ENGINE_SRC_DIR/ruleset/wazuh-core-test/manifest.yml
+echo "name: integration/wazuh-core-test/0" > $ENGINE_SRC_DIR/ruleset/wazuh-core-test/manifest.yml
+echo "decoders:" >> $ENGINE_SRC_DIR/ruleset/wazuh-core-test/manifest.yml
+echo "  - decoder/core-wazuh-message/0" >> $ENGINE_SRC_DIR/ruleset/wazuh-core-test/manifest.yml
+echo "filters:" >> $ENGINE_SRC_DIR/ruleset/wazuh-core-test/manifest.yml
+echo "  - filter/allow-all/0" >> $ENGINE_SRC_DIR/ruleset/wazuh-core-test/manifest.yml
+
 echo "--- Setting up the engine ---"
 mkdir -p $ENGINE_DIR/store/schema
 mkdir -p $ENVIRONMENT_DIR/etc/kvdb/

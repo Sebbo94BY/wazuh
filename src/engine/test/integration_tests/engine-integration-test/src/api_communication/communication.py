@@ -73,6 +73,6 @@ class CLIClient:
             words = command.split()
             arguments = [words[0], "--api_socket", self.api_socket] + words[1:]
             result = subprocess.run([self.binary_path] + arguments, text=True, capture_output=True, check=True)
-            return result.stdout
+            return result.returncode, result.stdout
         except subprocess.CalledProcessError as e:
             print(f"Error executing the command: {e}")

@@ -33,13 +33,16 @@ BINARY_PID=$!
 sleep 2
 
 # Find "features" folders and execute Behave
-find "$INTEGRATION_TESTS_DIR" -type d -name "features" | while read features_dir; do
+BEHAVE_EXIT_CODE=0  # Init return code of Behave
+for features_dir in $(find "$INTEGRATION_TESTS_DIR" -type d -name "features"); do
     steps_dir=$(dirname "$features_dir")/steps
     if [ -d "$steps_dir" ]; then
         echo "Running Behave in $features_dir"
-        behave "$features_dir"
+        behave "$features_dir" || BEHAVE_EXIT_CODE=1  # Catch return code of Behave
     fi
 done
 
 # Terminate the binary process by sending a termination signal
 kill $BINARY_PID
+echo "Exit code $BEHAVE_EXIT_CODE"
+exit $BEHAVE_EXIT_CODE
